@@ -70,16 +70,15 @@ def test_no_consumption_of_item(testdir, redis_args):
     )
 
     result.stdout.fnmatch_lines_random([
-        "*No items in redis queue*",
-        "*::test_run_should_run PASSED"
+        "*No items in redis list*"
     ])
 
     # make sure that that we get a '0' exit code for the testsuite
-    assert result.ret == 0
+    assert result.ret == 5
 
 
 def test_rpop_from_queue(testdir, redis_connection, redis_args):
-    """Specify rpop from redis queue with --redis-pop-type=rpop works."""
+    """Specify rpop from redis queue with --redis-pop-type=rpop."""
     [redis_connection.lpush(redis_args['redis-list-key'],
                             "test_rpop_from_queue.py::test_run" + str(i))
         for i in range(2)]
@@ -112,7 +111,7 @@ def test_rpop_from_queue(testdir, redis_connection, redis_args):
 
 
 def test_lpop_from_queue(testdir, redis_connection, redis_args):
-    """Specify rpop from redis queue with --redis-pop-type=rpop works."""
+    """Specify lpop from redis queue with --redis-pop-type=lpop."""
     [redis_connection.lpush(redis_args['redis-list-key'],
                             "test_lpop_from_queue.py::test_run" + str(i))
         for i in range(2)]

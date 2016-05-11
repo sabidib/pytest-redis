@@ -1,8 +1,10 @@
 """pytest-redis queue plugin implementation."""
 
 import redis
-import sys
 from _pytest.terminal import TerminalReporter
+import _pytest.runner as Runner
+
+import redis
 
 
 def pytest_addoption(parser):
@@ -35,31 +37,53 @@ def retrieve_test_from_redis(redis_connection, list_key, command):
     return val
 
 
-def pytest_cmdline_preparse(config, args):
-    """
-    Called before cmd line options are parsed.
-
-    We jump the gun and extract redis_host, redist_port
-    and redis_list_key from the cmdline args to start
-    pulling tests off the queue and add the tests to
-    the cmd line.
-    """
+def redis_test_generator(config, args_to_prepend):
+    """A generator that pops and returns test paths from the redis list."""
     term = TerminalReporter(config)
 
-    parse_args = config._parser.parse_known_args(args)
+    redis_host = config.getoption('redis_host')
+    redis_port = config.getoption('redis_port')
+    redis_pop_type = config.getoption('redis_pop_type')
+    redis_list_key = config.getoption('redis_list_key')
 
-    r_client = redis.StrictRedis(host=parse_args.redis_host,
-                                 port=parse_args.redis_port)
+    r_client = redis.StrictRedis(host=redis_host,
+                                 port=redis_port)
 
     val = retrieve_test_from_redis(r_client,
-                                   parse_args.redis_list_key,
-                                   parse_args.redis_pop_type)
+                                   redis_list_key,
+                                   redis_pop_type)
+
     if val is None:
-        term.write("No items in redis queue '%s'" % parse_args.redis_list_key)
-        term.write("Running all tests")
+        term.write("No items in redis list '%s'\n" % redis_list_key)
+        term.write("Running all tests\n")
 
     while val is not None:
-        args.append(val)
+        yield val
         val = retrieve_test_from_redis(r_client,
-                                       parse_args.redis_list_key,
-                                       parse_args.redis_pop_type)
+                                       redis_list_key,
+                                       redis_pop_type)
+
+
+def pytest_cmdline_main(config):
+    """Convert the args to pull from a redis queue."""
+    config.args = redis_test_generator(config, config.args)
+
+
+def pytest_itemcollected(item):
+    """Called when an item is found in the collection.
+
+    We jump the gun and execute the item in place instead of
+    waiting for the run test loop.
+    """
+    Runner.pytest_runtest_protocol(item, None)
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """Modify the list of items before they are sent to main test loop."""
+    term = TerminalReporter(config)
+    term.write("pytest-redis: Removing all collected "
+               "items before call to runtest_loop.")
+    if len(items) == 0:
+        items[:] = []
+    else:
+        items[:] = [items[0]]
