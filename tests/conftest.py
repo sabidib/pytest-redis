@@ -3,22 +3,14 @@
 import pytest
 import redis
 
+
 pytest_plugins = 'pytester'
 
 
 def pytest_addoption(parser):
     """Create pytest-redis test options."""
-    parser.addoption('--redis-host', metavar='redis_host',
-                     type=str, help='The host of the redis instance.',
-                     required=True)
-    parser.addoption('--redis-port', metavar='redis_port',
-                     type=str, help='The port of the redis instance.',
-                     required=True)
-    parser.addoption('--redis-list-key', metavar='redis_list_key',
-                     type=str,
-                     help=('The key of the redis list containing '
-                           'the test paths to execute.'),
-                     required=True)
+    import pytest_redis
+    pytest_redis.pytest_addoption(parser)
     parser.addoption("--force", dest='feature', action='store_true',
                      help=('A boolean value indicating if existing'
                            'redis lists should be deleted before starting'
@@ -72,7 +64,7 @@ def redis_connection(redis_args, force_del_lists):
                            "list.").format(redis_args['redis-list-key'])
             pytest.exit(exit_string)
         else:
-            print "Deleting pre-exiting redi list '{}'".format(
+            print "Deleting pre-exiting redis list '{}'".format(
                 redis_args['redis-list-key'])
             r_client.delete(redis_args['redis-list-key'])
 
