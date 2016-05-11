@@ -1,7 +1,6 @@
 """pytest-redis queue plugin implementation."""
 
 import redis
-import sys
 from _pytest.terminal import TerminalReporter
 
 
