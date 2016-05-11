@@ -2,8 +2,6 @@
 
 import redis
 
-__version__ = "0.2.4"
-
 
 def pytest_addoption(parser):
     """Add command line options to py.test command."""
