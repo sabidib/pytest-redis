@@ -1,8 +1,8 @@
 """pytest-redis queue plugin implementation."""
 
 import redis
-
-__version__ = "0.2.4"
+import sys
+from _pytest.terminal import TerminalReporter
 
 
 def pytest_addoption(parser):
@@ -44,6 +44,8 @@ def pytest_cmdline_preparse(config, args):
     pulling tests off the queue and add the tests to
     the cmd line.
     """
+    term = TerminalReporter(config)
+
     parse_args = config._parser.parse_known_args(args)
 
     r_client = redis.StrictRedis(host=parse_args.redis_host,
@@ -53,8 +55,8 @@ def pytest_cmdline_preparse(config, args):
                                    parse_args.redis_list_key,
                                    parse_args.redis_pop_type)
     if val is None:
-        print "No items in redis queue '%s'" % parse_args.redis_list_key
-        print "Running all tests"
+        term.write("No items in redis queue '%s'" % parse_args.redis_list_key)
+        term.write("Running all tests")
 
     while val is not None:
         args.append(val)

@@ -70,6 +70,7 @@ def test_no_consumption_of_item(testdir, redis_args):
     )
 
     result.stdout.fnmatch_lines_random([
+        "*No items in redis queue*",
         "*::test_run_should_run PASSED"
     ])
 
@@ -140,3 +141,6 @@ def test_lpop_from_queue(testdir, redis_connection, redis_args):
 
     # make sure that that we get a '0' exit code for the testsuite
     assert result.ret == 0
+
+
+
