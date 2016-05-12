@@ -1,5 +1,4 @@
 """Configuration of pytest tests."""
-
 import pytest
 import redis
 
