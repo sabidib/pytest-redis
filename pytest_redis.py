@@ -2,6 +2,21 @@
 from _pytest.terminal import TerminalReporter
 import _pytest.runner
 import redis
+# Exit value when everything is okay
+from _pytest.main import EXIT_OK
+# Exit value when no tests are collected
+from _pytest.main import EXIT_NOTESTSCOLLECTED
+# Exit value whenever a single test fails
+from _pytest.main import EXIT_TESTSFAILED
+# Exit value when an exception is thrown by parser or KeyboardInterrupt
+from _pytest.main import EXIT_INTERRUPTED
+# Exit value when incorrect cmdline args are passed
+from _pytest.main import EXIT_USAGEERROR
+# Exit value when an internal error occurs
+from _pytest.main import EXIT_INTERNALERROR
+
+
+tests_collected = 0
 
 
 def pytest_addoption(parser):
@@ -67,18 +82,40 @@ def pytest_cmdline_main(config):
     config.args = redis_test_generator(config, config.args)
 
 
+def pytest_runtest_protocol(item, nextitem):
+    """Called when an item is run. Returning true stops the hook chain."""
+    return True
+
+
 def pytest_itemcollected(item):
     """Called when an item is found in the collection.
 
     We jump the gun and execute the item in place instead of
     waiting for the run test loop.
     """
+    global tests_collected
+    tests_collected += 1
     _pytest.runner.pytest_runtest_protocol(item, None)
 
 
-def pytest_collection_modifyitems(session, config, items):
-    """Modify the list of items before they are sent to main test loop."""
-    term = TerminalReporter(config)
-    term.write("pytest-redis: Removing all collected "
-               "items before call to runtest_loop.")
-    items[:] = []
+def pytest_sessionfinish(session, exitstatus):
+    """Called when the entire test session is completed."""
+    global tests_collected
+    session.testscollected = tests_collected
+    # default returns
+    if (session.exitstatus == EXIT_INTERRUPTED or
+       session.exitstatus == EXIT_INTERNALERROR or
+       session.exitstatus == EXIT_USAGEERROR):
+        return session.exitstatus
+
+    # adjust the return value because py.test doesn't know
+    # we run + collect tests
+    if session.exitstatus == EXIT_NOTESTSCOLLECTED:
+        if tests_collected == 0:
+            return EXIT_NOTESTSCOLLECTED
+        elif session.testsfailed:
+            return EXIT_TESTSFAILED
+        else:
+            return EXIT_OK
+    else:
+        return session.exitstatus
