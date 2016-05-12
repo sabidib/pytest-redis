@@ -4,9 +4,14 @@ Tests should be launched from the root directory with:
 py.test --redis-port=<port> --redis-host=<host> --redis-list-key=<list_to_use>
 
 """
-import pytest_redis
 import threading
 import os.path
+
+from _pytest.main import (EXIT_OK,
+                          EXIT_NOTESTSCOLLECTED,
+                          EXIT_TESTSFAILED,
+                          EXIT_INTERRUPTED,
+                          EXIT_USAGEERROR)
 
 
 def default_pytest_redis_args():
@@ -34,7 +39,7 @@ def create_test_file(testdir, filename, text):
 
 
 def get_standard_args(option_dict):
-    """Returns standard pytest redis_args combinbed with option dict"""
+    """Return standard pytest redis_args combinbed with option dict."""
     return default_pytest_redis_args() + get_option_array(option_dict)
 
 
@@ -47,9 +52,9 @@ def setup_multiple_consumer_threads(testdir, py_test_args, num_threads):
     """Return multiple threads that will run pytest with the given args."""
     def run_consumer(testdir, test_args):
         result = testdir.runpytest(*test_args)
-        assert result.ret != pytest_redis.EXIT_INTERRUPTED
-        assert result.ret != pytest_redis.EXIT_TESTSFAILED
-        assert result.ret == pytest_redis.EXIT_OK
+        assert result.ret != EXIT_INTERRUPTED
+        assert result.ret != EXIT_TESTSFAILED
+        assert result.ret == EXIT_OK
 
     return [threading.Thread(target=run_consumer, args=[testdir, py_test_args])
             for i in range(num_threads)]
@@ -73,7 +78,7 @@ def test_external_arguments(testdir, redis_connection, redis_args):
 
     result = testdir.runpytest(*py_test_args)
     assert os.path.exists(junitxml_path)
-    assert result.ret == pytest_redis.EXIT_OK
+    assert result.ret == EXIT_OK
 
 
 def test_multiple_consumers(testdir, redis_connection, redis_args):
@@ -114,7 +119,7 @@ def test_no_consumption_of_item(testdir, redis_args):
     """)
     py_test_args = get_standard_args(redis_args)
     result = testdir.runpytest(*py_test_args)
-    assert result.ret == pytest_redis.EXIT_NOTESTSCOLLECTED
+    assert result.ret == EXIT_NOTESTSCOLLECTED
 
 
 def test_non_existent_test_name(testdir, redis_connection, redis_args):
@@ -130,7 +135,7 @@ def test_non_existent_test_name(testdir, redis_connection, redis_args):
 
     py_test_args = get_standard_args(redis_args)
     result = testdir.runpytest(*py_test_args)
-    assert result.ret == pytest_redis.EXIT_USAGEERROR
+    assert result.ret == EXIT_USAGEERROR
 
 
 def test_module_test_name(testdir, redis_connection, redis_args):
@@ -166,7 +171,7 @@ def test_module_test_name(testdir, redis_connection, redis_args):
             "*" + module + "*PASSED",
             "*" + module + "*PASSED"
         ])
-        assert result.ret == pytest_redis.EXIT_OK
+        assert result.ret == EXIT_OK
 
 
 def test_lr_pop_from_list(testdir, redis_connection, redis_args):
@@ -198,15 +203,15 @@ def test_lr_pop_from_list(testdir, redis_connection, redis_args):
                 "*::test_run0 FAILED",
                 "*::test_run1 PASSED"
             ])
-            assert result.ret == pytest_redis.EXIT_TESTSFAILED
+            assert result.ret == EXIT_TESTSFAILED
         elif pop_dir == 'lpop':
             result.stdout.fnmatch_lines([
                 "*::test_run1 PASSED",
                 "*::test_run0 FAILED"
             ])
-            assert result.ret == pytest_redis.EXIT_TESTSFAILED
+            assert result.ret == EXIT_TESTSFAILED
         elif pop_dir == 'invalid':
             # Clean up redis list because we have an invalid cmd line opt
             redis_connection.rpop(redis_args['redis-list-key'])
             redis_connection.rpop(redis_args['redis-list-key'])
-            assert result.ret == pytest_redis.EXIT_INTERRUPTED
+            assert result.ret == EXIT_INTERRUPTED
