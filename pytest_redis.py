@@ -1,9 +1,6 @@
 """pytest-redis queue plugin implementation."""
-
-import redis
 from _pytest.terminal import TerminalReporter
 import _pytest.runner as Runner
-
 import redis
 
 
@@ -19,6 +16,7 @@ def pytest_addoption(parser):
                      type=str,
                      help=('The key of the redis list containing '
                            'the test paths to execute.'),
+                     choices=['RPOP', 'rpop', 'LPOP', 'lpop'],
                      default="RPOP")
     parser.addoption('--redis-list-key', metavar='redis_list_key',
                      type=str,
@@ -83,7 +81,4 @@ def pytest_collection_modifyitems(session, config, items):
     term = TerminalReporter(config)
     term.write("pytest-redis: Removing all collected "
                "items before call to runtest_loop.")
-    if len(items) == 0:
-        items[:] = []
-    else:
-        items[:] = [items[0]]
+    items[:] == []
