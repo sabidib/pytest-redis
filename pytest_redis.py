@@ -1,6 +1,6 @@
 """pytest-redis queue plugin implementation."""
 from _pytest.terminal import TerminalReporter
-import _pytest.runner as Runner
+import _pytest.runner
 import redis
 
 
@@ -73,7 +73,7 @@ def pytest_itemcollected(item):
     We jump the gun and execute the item in place instead of
     waiting for the run test loop.
     """
-    Runner.pytest_runtest_protocol(item, None)
+    _pytest.runner.pytest_runtest_protocol(item, None)
 
 
 def pytest_collection_modifyitems(session, config, items):
@@ -81,4 +81,4 @@ def pytest_collection_modifyitems(session, config, items):
     term = TerminalReporter(config)
     term.write("pytest-redis: Removing all collected "
                "items before call to runtest_loop.")
-    items[:] == []
+    items[:] = []
