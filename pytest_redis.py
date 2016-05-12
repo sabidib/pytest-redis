@@ -68,7 +68,6 @@ def redis_test_generator(config, args_to_prepend):
 
     if val is None:
         term.write("No items in redis list '%s'\n" % redis_list_key)
-        term.write("Running all tests\n")
 
     while val is not None:
         yield val
@@ -103,9 +102,8 @@ def pytest_sessionfinish(session, exitstatus):
     global tests_collected
     session.testscollected = tests_collected
     # default returns
-    if (session.exitstatus == EXIT_INTERRUPTED or
-       session.exitstatus == EXIT_INTERNALERROR or
-       session.exitstatus == EXIT_USAGEERROR):
+    if (session.exitstatus in
+            (EXIT_INTERRUPTED, EXIT_INTERNALERROR, EXIT_USAGEERROR)):
         return session.exitstatus
 
     # adjust the return value because py.test doesn't know
