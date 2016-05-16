@@ -4,8 +4,10 @@ Tests should be launched from the root directory with:
 py.test --redis-port=<port> --redis-host=<host> --redis-list-key=<list_to_use>
 
 """
-import threading
+import multiprocessing
+from multiprocessing import Pipe
 import os.path
+
 
 from _pytest.main import (EXIT_OK,
                           EXIT_NOTESTSCOLLECTED,
@@ -48,16 +50,21 @@ def create_test_dir(testdir, dirname):
     testdir.mkdir(dirname)
 
 
-def setup_multiple_consumer_threads(testdir, py_test_args, num_threads):
+def setup_multiple_consumer_processes(testdir, py_test_args, num_threads):
     """Return multiple threads that will run pytest with the given args."""
-    def run_consumer(testdir, test_args):
+    def run_consumer(testdir, test_args, pipe_to_parent):
         result = testdir.runpytest(*test_args)
-        assert result.ret != EXIT_INTERRUPTED
-        assert result.ret != EXIT_TESTSFAILED
-        assert result.ret == EXIT_OK
+        pipe_to_parent.send([result.ret])
 
-    return [threading.Thread(target=run_consumer, args=[testdir, py_test_args])
-            for i in range(num_threads)]
+    ret = []
+    for i in range(num_threads):
+        parent_pipe_end, child_pipe_conn = Pipe()
+        process = multiprocessing.Process(target=run_consumer,
+                                          args=[testdir,
+                                                py_test_args,
+                                                child_pipe_conn])
+        ret.append((process, parent_pipe_end))
+    return ret
 
 
 def test_external_arguments(testdir, redis_connection, redis_args):
@@ -89,23 +96,25 @@ def test_multiple_consumers(testdir, redis_connection, redis_args):
         def test_multiple_consumers():
             assert True
     """)
-    for i in range(100):
+    for i in range(50):
         redis_connection.lpush(redis_args['redis-list-key'],
                                test_file_name + "::test_multiple_consumers")
 
     py_test_args = get_standard_args(redis_args)
 
-    threads = setup_multiple_consumer_threads(testdir, py_test_args, 5)
+    processes = setup_multiple_consumer_processes(testdir, py_test_args, 5)
 
-    for thread in threads:
-        thread.start()
+    for proc in processes:
+        proc[0].start()
 
-    for i in range(100):
+    for i in range(10):
         redis_connection.lpush(redis_args['redis-list-key'],
                                test_file_name + "::test_multiple_consumers")
 
-    for thread in threads:
-        thread.join()
+    for proc in processes:
+        proc[0].join()
+        exit_result = proc[1].recv()[0]
+        assert exit_result == EXIT_OK
 
     assert redis_connection.llen(redis_args['redis-list-key']) == 0
 
@@ -135,7 +144,7 @@ def test_non_existent_test_name(testdir, redis_connection, redis_args):
 
     py_test_args = get_standard_args(redis_args)
     result = testdir.runpytest(*py_test_args)
-    assert result.ret == EXIT_USAGEERROR
+    assert result.ret == EXIT_NOTESTSCOLLECTED
 
 
 def test_module_test_name(testdir, redis_connection, redis_args):
