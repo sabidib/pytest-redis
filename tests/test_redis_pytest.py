@@ -225,3 +225,60 @@ def test_lr_pop_from_list(testdir, redis_connection, redis_args):
             redis_connection.rpop(redis_args['redis-list-key'])
             redis_connection.rpop(redis_args['redis-list-key'])
             assert result.ret == EXIT_INTERRUPTED
+
+
+def test_conf_tests(testdir, redis_connection, redis_args):
+    """Ensure that conftest.py are executed."""
+    test_file_name = "test_conf_test.py"
+
+    fixture_prints = [
+        "fixture_1_ran",
+        "fixture_2_ran"
+    ]
+    num_times_to_run_tests = 3
+
+    create_test_file(testdir, test_file_name, """
+        def test_run0(a_fixture):
+            assert not a_fixture
+
+        def test_run1(another_fixture):
+            assert another_fixture
+
+        def test_run2():
+            assert False
+    """)
+
+    test_file_name_2 = "conftest.py"
+    create_test_file(testdir, test_file_name_2, """
+        import pytest
+
+        def pytest_collection_modifyitems(session, config, items):
+            if "test_run2" in items[0].nodeid:
+                items[:] = []
+
+        @pytest.fixture
+        def a_fixture():
+            print
+            print "{}"
+            return False
+
+        @pytest.fixture
+        def another_fixture():
+            print
+            print "{}"
+            return True
+
+    """.format(*fixture_prints))
+
+    for i in range(num_times_to_run_tests):
+        redis_connection.lpush(redis_args['redis-list-key'],
+                               test_file_name)
+
+    py_test_args = get_standard_args(redis_args) + ["-s"]
+
+    result = testdir.runpytest(*py_test_args)
+
+    assert result.ret == EXIT_TESTSFAILED
+    result.stdout.fnmatch_lines([test for test in fixture_prints] *
+                                num_times_to_run_tests)
+
