@@ -66,6 +66,31 @@ def setup_multiple_consumer_processes(testdir, py_test_args, num_threads):
     return ret
 
 
+def get_elaborate_test_directories_and_paths(testdir, folders):
+    """Create an elaborate depth=1 directory structure."""
+    num_test_methods_per_file = 2
+    # Create the contents of the test files
+    for folder in folders.keys():
+        create_test_dir(testdir, folder)
+        for a_file in folders[folder]:
+            file_path = folder + "/" + a_file
+            file_text = ""
+            for test_num in range(num_test_methods_per_file):
+                test_name = "test_multiple_consumers_{}_{}".format(
+                    folder + "_" + a_file.split(".")[0],
+                    test_num)
+                file_text += """
+                def {}():
+                    assert True
+                """.format(test_name)
+                # We push each test to the queue
+                # `num_times_to_run_tests` times to
+                # have a bit more work to do
+                test_name_path = folder + "/" + a_file + "::" + test_name
+                yield test_name_path
+            create_test_file(testdir, file_path, file_text)
+
+
 
 def test_external_arguments(testdir, redis_connection, redis_args):
     """Ensure that the plugin doesn't intefere with other plugins."""
@@ -87,6 +112,28 @@ def test_external_arguments(testdir, redis_connection, redis_args):
     assert os.path.exists(junitxml_path)
     assert result.ret == EXIT_OK
 
+
+def test_elborate_test_modules(testdir, redis_connection, redis_args):
+    """Ensure that modules in are collected and executed correctly."""
+    num_times_to_run_each_tests = 2
+    test_to_run_list = []
+    folders = {'module1': ["file1.py"],
+               'module2': ["file2.py"],
+               'module3': ["file3.py"]}
+
+    test_path_generator = get_elaborate_test_directories_and_paths(testdir,
+                                                                   folders)
+    for test_path in test_path_generator:
+        for _ in range(num_times_to_run_each_tests):
+            redis_connection.lpush(redis_args['redis-list-key'],
+                                   test_path)
+            test_to_run_list.append(test_path)
+
+    py_test_args = get_standard_args(redis_args)
+    result = testdir.runpytest(*py_test_args)
+    result.stdout.fnmatch_lines(["*" + test_string + " PASSED"
+                                 for test_string in test_to_run_list]
+                                )
 
 def test_multiple_consumers(testdir, redis_connection, redis_args):
     """Pull tests from multiple test runs simultaneously."""
