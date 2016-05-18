@@ -282,3 +282,47 @@ def test_conf_tests(testdir, redis_connection, redis_args):
     result.stdout.fnmatch_lines([test for test in fixture_prints] *
                                 num_times_to_run_tests)
 
+
+def test_run_once(testdir, redis_connection, redis_args):
+    """Ensure that collected tests are only executed a single time."""
+    module_name = "test_run_once_module"
+    module_test_filename = "test_run_once.py"
+    module_test_filename_contents = """
+        import local
+        def test_exists():
+            assert True
+        def test_does_exist():
+            assert True
+        def test_random_test():
+            assert True
+    """
+    create_test_dir(testdir, module_name)
+    create_test_file(testdir, module_name + "/" + module_test_filename,
+                     module_test_filename_contents)
+    create_test_file(testdir, module_name + "/__init__.py",
+                     "")
+    create_test_file(testdir, module_name + "/local.py",
+                     """
+                    print "Imported"
+                    """)
+
+    py_test_args = get_standard_args(redis_args) + ["-s"]
+    redis_connection.lpush(redis_args['redis-list-key'],
+                           module_name + "/" +
+                           module_test_filename + "::test_exists")
+    redis_connection.lpush(redis_args['redis-list-key'],
+                           module_name + "/" +
+                           module_test_filename + "::test_does_exist")
+    redis_connection.lpush(redis_args['redis-list-key'],
+                           module_name + "/" +
+                           module_test_filename + "::test_random_test")
+    # We've pushed 3 tests from the same file,
+    # we should import local.py only once
+    result = testdir.runpytest(*py_test_args)
+    result.stdout.fnmatch_lines([
+        "*Imported*",
+        "*test_exists PASSED",
+        "*test_does_exist PASSED",
+        "*test_random_test PASSED"
+    ])
+    assert result.ret == EXIT_OK
