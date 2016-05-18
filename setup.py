@@ -6,7 +6,7 @@ setup(
     name='pytest-redis',
     author='Samy Abidib',
     author_email='abidibs@gmail.com',
-    version='0.2.4',
+    version='0.2.7',
     py_modules=['pytest_redis'],
     url='https://github.com/sabidib/pytest-redis',
     license='MIT',
@@ -18,7 +18,7 @@ setup(
         'Operating System::OS Independent',
     ],
     install_requires=[
-        'pytest>=2.9.1',
+        'pytest==2.9.1',
         'redis==2.10.5'
     ]
 )
