@@ -1,7 +1,15 @@
 """pytest-redis queue plugin implementation."""
-from _pytest.terminal import TerminalReporter
-import _pytest.runner
+import os
+
 import redis
+import pytest
+
+from _pytest.terminal import TerminalReporter
+import redis
+import _pytest.runner
+from _pytest.main import NoMatch
+from _pytest.main import EXIT_NOTESTSCOLLECTED, EXIT_OK
+
 
 
 def pytest_addoption(parser):
@@ -35,6 +43,57 @@ def retrieve_test_from_redis(redis_connection, list_key, command):
     return val
 
 
+def pytest_collection(session, genitems=True):
+    """We hook into the collection call and do the collection ourselves."""
+    hook = session.config.hook
+    try:
+        items = perform_collect_and_run(session)
+    finally:
+        hook.pytest_collection_finish(session=session)
+    session.testscollected = len(items)
+    return items
+
+
+def perform_collect_and_run(session):
+    """Collect and run tests streaming from the redis queue."""
+    # This mimics the internal pytest collect loop, but shortened
+    # while running tests as soon as they are found.
+    term = TerminalReporter(session.config)
+    redis_list = redis_test_generator(session.config, session.config.args)
+    hook = session.config.hook
+    session._initialpaths = set()
+    session._initialparts = []
+    session._notfound = []
+    session.items = []
+    for arg in redis_list:
+        term.write(os.linesep)
+        parts = session._parsearg(arg)
+        session._initialparts.append(parts)
+        session._initialpaths.add(parts[0])
+        arg = "::".join(map(str, parts))
+        session.trace("processing argument", arg)
+        session.trace.root.indent += 1
+        try:
+            for x in session._collect(arg):
+                items = session.genitems(x)
+                new_items = []
+                for item in items:
+                    new_items.append(item)
+                hook.pytest_collection_modifyitems(session=session,
+                                                   config=session.config,
+                                                   items=new_items)
+                for item in new_items:
+                    session.items.append(item)
+                    _pytest.runner.pytest_runtest_protocol(item, None)
+        except NoMatch:
+            # we are inside a make_report hook so
+            # we cannot directly pass through the exception
+            raise pytest.UsageError("Could not find" + arg)
+
+        session.trace.root.indent -= 1
+    return session.items
+
+
 def redis_test_generator(config, args_to_prepend):
     """A generator that pops and returns test paths from the redis list."""
     term = TerminalReporter(config)
@@ -61,20 +120,17 @@ def redis_test_generator(config, args_to_prepend):
                                        redis_pop_type)
 
 
-def pytest_cmdline_main(config):
-    """Convert the args to pull from a redis queue."""
-    config.args = redis_test_generator(config, config.args)
-
-
 def pytest_runtest_protocol(item, nextitem):
     """Called when an item is run. Returning true stops the hook chain."""
     return True
 
 
-def pytest_itemcollected(item):
-    """Called when an item is found in the collection.
-
-    We jump the gun and execute the item in place instead of
-    waiting for the run test loop.
-    """
-    _pytest.runner.pytest_runtest_protocol(item, None)
+def pytest_sessionfinish(session, exitstatus):
+    """Called when the entire test session is completed."""
+    # adjust the return value to return EXIT_OK
+    # when no tests are collected.
+    if session.exitstatus == EXIT_NOTESTSCOLLECTED:
+        session.exitstatus = EXIT_OK
+        return EXIT_OK
+    else:
+        return session.exitstatus

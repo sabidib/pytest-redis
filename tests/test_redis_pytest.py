@@ -125,7 +125,7 @@ def test_no_consumption_of_item(testdir, redis_args):
     """)
     py_test_args = get_standard_args(redis_args)
     result = testdir.runpytest(*py_test_args)
-    assert result.ret == EXIT_NOTESTSCOLLECTED
+    assert result.ret == EXIT_OK
 
 
 def test_non_existent_test_name(testdir, redis_connection, redis_args):
@@ -149,6 +149,8 @@ def test_module_test_name(testdir, redis_connection, redis_args):
     module_1_name = "test_module_1"
     module_1_test_filename = "test_module_1_file.py"
     module_1_test_filename_contents = """
+        def test_exists():
+            assert True
         def test_does_exist():
             assert True
         def test_random_test():
@@ -157,6 +159,8 @@ def test_module_test_name(testdir, redis_connection, redis_args):
     module_2_name = "test_module_2"
     module_2_test_filename = "test_module_2_file.py"
     module_2_test_filename_contents = """
+        def test_exists():
+            assert True
         def test_does_exist_2():
             assert True
         def test_random_test_2():
