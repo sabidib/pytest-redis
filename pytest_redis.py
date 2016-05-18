@@ -14,8 +14,8 @@ def pytest_addoption(parser):
                      required=True)
     parser.addoption('--redis-pop-type', metavar='redis_pop_type',
                      type=str,
-                     help=('The key of the redis list containing '
-                           'the test paths to execute.'),
+                     help=('Indicates which side the of the redis list '
+                           'a test is removed from.'),
                      choices=['RPOP', 'rpop', 'LPOP', 'lpop'],
                      default="RPOP")
     parser.addoption('--redis-list-key', metavar='redis_list_key',
