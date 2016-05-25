@@ -200,49 +200,6 @@ def test_module_test_name(testdir, redis_connection, redis_args):
         assert result.ret == EXIT_OK
 
 
-def test_lr_pop_from_list(testdir, redis_connection, redis_args):
-    """Specify rpop from redis list with --redis-pop-type=rpop."""
-    test_file_name = "test_lr_pop_from_list.py"
-
-    utils.create_test_file(testdir, test_file_name, """
-        def test_run0():
-            assert False
-
-        def test_run1():
-            assert True
-    """)
-
-    py_test_args = utils.get_standard_args(redis_args)
-
-    pop_options = ['rpop', 'lpop', 'invalid']
-
-    for pop_dir in pop_options:
-        cur_args = py_test_args + ["--redis-pop-type=" + pop_dir]
-        # populate redis list with tests
-        for ind in range(2):
-            redis_connection.lpush(redis_args['redis-list-key'],
-                                   test_file_name + "::test_run" + str(ind))
-
-        result = testdir.runpytest(*cur_args)
-        if pop_dir == 'rpop':
-            result.stdout.fnmatch_lines([
-                "*::test_run0 FAILED",
-                "*::test_run1 PASSED"
-            ])
-            assert result.ret == EXIT_TESTSFAILED
-        elif pop_dir == 'lpop':
-            result.stdout.fnmatch_lines([
-                "*::test_run1 PASSED",
-                "*::test_run0 FAILED"
-            ])
-            assert result.ret == EXIT_TESTSFAILED
-        elif pop_dir == 'invalid':
-            # Clean up redis list because we have an invalid cmd line opt
-            redis_connection.rpop(redis_args['redis-list-key'])
-            redis_connection.rpop(redis_args['redis-list-key'])
-            assert result.ret == EXIT_INTERRUPTED
-
-
 def test_conf_tests(testdir, redis_connection, redis_args):
     """Ensure that conftest.py are executed."""
     test_file_name = "test_conf_test.py"

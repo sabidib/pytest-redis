@@ -19,18 +19,6 @@ def pytest_addoption(parser):
     parser.addoption('--redis-port', metavar='redis_port',
                      type=str, help='The port of the redis instance.',
                      required=True)
-    parser.addoption('--redis-pop-type', metavar='redis_pop_type',
-                     type=str,
-                     help=('Indicates which side the of the redis list '
-                           'a test is removed from.'),
-                     choices=['RPOP', 'rpop', 'LPOP', 'lpop'],
-                     default="RPOP")
-    parser.addoption('--redis-push-type', metavar='redis_push_type',
-                     type=str,
-                     help=('Indicates which side the of the redis list '
-                           'a test is pushed to, if tests are ever pushed.'),
-                     choices=['RPUSH', 'rpush', 'LPUSH', 'lpush'],
-                     default="LPUSH")
     parser.addoption('--redis-list-key', metavar='redis_list_key',
                      type=str,
                      help=('The key of the redis list containing '
@@ -48,25 +36,13 @@ def pytest_addoption(parser):
                            'tests are pushed to this list.'),
                      required=False)
 
-
-def push_tests_to_redis(redis_connection, list_key, redis_push_type, element):
-    """Push a test path from the redis queue."""
-    val = None
-    if redis_push_type.lower() == "lpush":
-        val = redis_connection.lpush(list_key, element)
-    elif redis_push_type.lower() == "rpush":
-        val = redis_connection.rpush(list_key, element)
-    return val
-
-
-def retrieve_test_from_redis(redis_connection, list_key, redis_pop_type):
+def retrieve_test_from_redis(redis_connection, list_key, backup_list_key):
     """Remove and return a test path from the redis queue."""
-    val = None
-    if redis_pop_type.lower() == "lpop":
-        val = redis_connection.lpop(list_key)
-    elif redis_pop_type.lower() == "rpop":
-        val = redis_connection.rpop(list_key)
-    return val
+    if backup_list_key is not None:
+        return redis_connection.rpoplpush(list_key, backup_list_key)
+    else:
+        return redis_connection.rpop(list_key)
+
 
 
 def pytest_collection(session, genitems=True):
@@ -89,8 +65,7 @@ def get_redis_connection(config):
     return r_client
 
 
-def determine_redis_list_key_to_use(session, redis_connection,
-                                    redis_pop_type, redis_push_type):
+def determine_redis_list_key_to_use(session, redis_connection):
     """Determine generator for tests from the state of the main and backup list.
 
     We use the cmdline args along with the empty state of the main and backup
@@ -113,26 +88,20 @@ def determine_redis_list_key_to_use(session, redis_connection,
 
     final_redis_list = None
 
-    if redis_connection.llen(redis_list_key) == 0 and backup_list_key is not None:
+    if backup_list_key is not None:
         # Check if the backup redist list is empty
-        if redis_connection.llen(backup_list_key) != 0:
+        if redis_connection.llen(redis_list_key) == 0 and redis_connection.llen(backup_list_key) != 0:
             # Push tests to the main redis list
-            prev_list = redis_test_generator(session.config,
-                                             redis_connection,
-                                             backup_list_key,
-                                             redis_pop_type)
-            for test in prev_list:
-                push_tests_to_redis(redis_connection, redis_list_key,
-                                    redis_push_type, test)
+            while redis_connection.rpoplpush(backup_list_key, redis_list_key) is not None:
+                continue
         final_redis_list = redis_test_generator(session.config,
                                                 redis_connection,
                                                 redis_list_key,
-                                                redis_pop_type)
+                                                backup_list_key=backup_list_key)
     else:
         final_redis_list = redis_test_generator(session.config,
                                                 redis_connection,
-                                                redis_list_key,
-                                                redis_pop_type)
+                                                redis_list_key)
 
     return final_redis_list
 
@@ -144,15 +113,9 @@ def perform_collect_and_run(session):
     term = TerminalReporter(session.config)
 
     redis_connection = get_redis_connection(session.config)
-    redis_push_type = session.config.getoption('redis_push_type')
-    redis_pop_type = session.config.getoption('redis_pop_type')
 
     redis_list = determine_redis_list_key_to_use(session,
-                                                 redis_connection,
-                                                 redis_pop_type,
-                                                 redis_push_type)
-
-    backup_list_key = session.config.getoption("redis_backup_list_key")
+                                                 redis_connection)
 
     hook = session.config.hook
     session._initialpaths = set()
@@ -161,9 +124,6 @@ def perform_collect_and_run(session):
     session.items = []
     for arg in redis_list:
         term.write(os.linesep)
-        if backup_list_key:
-            push_tests_to_redis(redis_connection, backup_list_key,
-                                redis_push_type, arg)
         parts = session._parsearg(arg)
         session._initialparts.append(parts)
         session._initialpaths.add(parts[0])
@@ -192,13 +152,13 @@ def perform_collect_and_run(session):
 
 
 def redis_test_generator(config, redis_connection, redis_list_key,
-                         redis_pop_type):
+                         backup_list_key=None):
     """A generator that pops and returns test paths from the redis list key."""
     term = TerminalReporter(config)
 
     val = retrieve_test_from_redis(redis_connection,
                                    redis_list_key,
-                                   redis_pop_type)
+                                   backup_list_key)
 
     if val is None:
         term.write("No items in redis list '%s'\n" % redis_list_key)
@@ -207,7 +167,7 @@ def redis_test_generator(config, redis_connection, redis_list_key,
         yield val
         val = retrieve_test_from_redis(redis_connection,
                                        redis_list_key,
-                                       redis_pop_type)
+                                       backup_list_key)
 
 
 def pytest_runtest_protocol(item, nextitem):

@@ -55,10 +55,7 @@ def test_run_tests_multiple_times_with_backup(testdir, redis_connection,
 
     for i in range(10):
         result = testdir.runpytest(*py_test_args)
-        result.stdout.fnmatch_lines([
-            "test_file.py::test_exists PASSED",
-            "test_file.py::test_does_exist PASSED"
-        ])
+        result.stdout.fnmatch_lines([i + " PASSED" for i in file_paths_to_test])
         assert redis_connection.llen(back_up_list) == 2
 
     for a_file in file_paths_to_test:
