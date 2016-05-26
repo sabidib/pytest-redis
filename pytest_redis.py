@@ -65,45 +65,26 @@ def get_redis_connection(config):
     return r_client
 
 
-def determine_redis_list_key_to_use(session, redis_connection):
-    """Determine generator for tests from the state of the main and backup list.
+def populate_test_generator(session, redis_connection):
+    """Create a test path generator that consumes from the main redis list.
 
-    We use the cmdline args along with the empty state of the main and backup
-    lists to determine if the generator for the test paths that
-    should be returned.
-
-    If the main redis list (specified by 'redis_list_key') is not empty,
-    return the generator for that list.
-
-    If the main redis list is empty then the backup redis list(specified by
-    'redis_backup_list_key') is checked to see if it is empty.
-    If it is not empty, then pop all elements off and push them onto
-    the main redis list and then return a generator for that list.
-
-    Finally, if both lists are empty, return the main redis list
-    iterator as is.
+    This first checks the backup list for any entries and pushes them to the main
+    redis list before returning a generator to that list.
     """
     redis_list_key = session.config.getoption("redis_list_key")
     backup_list_key = session.config.getoption("redis_backup_list_key")
 
-    final_redis_list = None
+    if backup_list_key is not None and redis_connection.llen(backup_list_key) != 0:
+        # Push tests to the main redis list
+        while redis_connection.rpoplpush(backup_list_key, redis_list_key) is not None:
+            continue
 
-    if backup_list_key is not None:
-        # Check if the backup redist list is empty
-        if redis_connection.llen(redis_list_key) == 0 and redis_connection.llen(backup_list_key) != 0:
-            # Push tests to the main redis list
-            while redis_connection.rpoplpush(backup_list_key, redis_list_key) is not None:
-                continue
-        final_redis_list = redis_test_generator(session.config,
-                                                redis_connection,
-                                                redis_list_key,
-                                                backup_list_key=backup_list_key)
-    else:
-        final_redis_list = redis_test_generator(session.config,
-                                                redis_connection,
-                                                redis_list_key)
+    return redis_test_generator(session.config,
+                                redis_connection,
+                                redis_list_key,
+                                backup_list_key=backup_list_key)
 
-    return final_redis_list
+
 
 
 def perform_collect_and_run(session):
@@ -114,8 +95,8 @@ def perform_collect_and_run(session):
 
     redis_connection = get_redis_connection(session.config)
 
-    redis_list = determine_redis_list_key_to_use(session,
-                                                 redis_connection)
+    redis_list = populate_test_generator(session,
+                                         redis_connection)
 
     hook = session.config.hook
     session._initialpaths = set()
