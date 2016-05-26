@@ -98,6 +98,8 @@ def perform_collect_and_run(session):
     redis_list = populate_test_generator(session,
                                          redis_connection)
 
+
+    default_verbosity = session.config.option.verbose
     hook = session.config.hook
     session._initialpaths = set()
     session._initialparts = []
@@ -117,9 +119,16 @@ def perform_collect_and_run(session):
                 new_items = []
                 for item in items:
                     new_items.append(item)
+
+                # HACK ATTACK: This little hack lets us remove the
+                # 'collected' and 'collecting' messages while still
+                # keeping the default verbosity for the rest of the
+                # run...
+                session.config.option.verbose = -1
                 hook.pytest_collection_modifyitems(session=session,
                                                    config=session.config,
                                                    items=new_items)
+                session.config.option.verbose = default_verbosity
                 for item in new_items:
                     session.items.append(item)
                     _pytest.runner.pytest_runtest_protocol(item, None)
@@ -127,7 +136,6 @@ def perform_collect_and_run(session):
             # we are inside a make_report hook so
             # we cannot directly pass through the exception
             raise pytest.UsageError("Could not find" + arg)
-
         session.trace.root.indent -= 1
     return session.items
 
